@@ -104,19 +104,19 @@
 
 ;; (org-odt-xml-containers-type 'style:graphic-properties styles-tree)
 
-(defun test (property default-value default-value-for-sample-usage tree)
+(defun org-odt-define-struct-property-attributes (property default-value default-value-for-sample-usage tree)
   (let* ((props (->> tree
 		     (org-odt-xml-properties-type property)
 		     (-map 'car)))
 	 (props1 (org-odt-xml--destructure-props props))
-	 (constructor (intern (replace-regexp-in-string
-			       ":" "-" (format "odt-make-%s" property) t t))))
+         (struct-type (intern (format "odt-%s-attributes" property)))
+	 (constructor (intern (format "odt-make-%s-attributes" property))))
     ;; (message "props1: %S" props1)
     (eval
      `(progn
 	(cl-defstruct
 	    (
-	     ,(intern (format "odt-struct-%s" property))
+	     ,struct-type
 	     (:constructor ,constructor
 			   (&key
 			    ,@(->> props1
@@ -130,25 +130,26 @@
 				    (list (car it)
 					  (cdr it)))))))
 	  ,@props)
-	(put ',constructor 'function-documentation
-	     ,(with-temp-buffer
-		(emacs-lisp-mode)
-		(pop-to-buffer (current-buffer))
-		(insert (pp-to-string
-			 `(,constructor
-			   ,@(->> default-value-for-sample-usage
-				  (--keep (list (intern (format ":%s" (alist-get (car it) props1)))
-						(cdr it)))
-				  (-flatten-n 1)))))
-		(goto-char (point-min))
-		(when (re-search-forward " " nil t)
-		  (while (re-search-forward ":" nil t)
-		    (save-excursion
-		      (goto-char (1- (match-beginning 0)))
-		      (newline))
-		    (inspect "test")))
-		(indent-region (point-min) (point-max))
-		(buffer-substring-no-properties (point-min) (point-max))))))))
+	;; (put ',constructor 'function-documentation
+	;;      ,(with-temp-buffer
+	;; 	(emacs-lisp-mode)
+	;; 	(pop-to-buffer (current-buffer))
+	;; 	(insert (pp-to-string
+	;; 		 `(,constructor
+	;; 		   ,@(->> default-value-for-sample-usage
+	;; 			  (--keep (list (intern (format ":%s" (alist-get (car it) props1)))
+	;; 					(cdr it)))
+	;; 			  (-flatten-n 1)))))
+	;; 	(goto-char (point-min))
+	;; 	(when (re-search-forward " " nil t)
+	;; 	  (while (re-search-forward ":" nil t)
+	;; 	    (save-excursion
+	;; 	      (goto-char (1- (match-beginning 0)))
+	;; 	      (newline))
+	;; 	    (inspect "test")))
+	;; 	(indent-region (point-min) (point-max))
+	;; 	(buffer-substring-no-properties (point-min) (point-max))))
+        ))))
 
 ;; (test 'style:style default-value default-value styles-tree)
 
@@ -221,6 +222,21 @@
 		    -uniq
 		    (org-odt-xml-sort< 'identity))))))
 
+
+(defun org-odt-xml-properties-type-new (types xml)
+  (unless (consp types)
+    (setq types (list types)))
+  (->> xml
+       (org-odt-xml-map (lambda (n)
+			  (when (memq (org-odt-xml-type n) types)
+			    (->> (org-odt-xml-properties n)
+				 (-map #'org-odt-xml-type)))))
+       (-flatten-n 1)
+       -uniq
+       (org-odt-xml-sort< #'identity)))
+
+(org-odt-xml-properties-type-new 'style:style styles-tree)
+
 (defun org-odt-xml-container-type (type xml)
   (->> xml
        (org-odt-xml-map (lambda (n)
@@ -229,6 +245,21 @@
 				     when (eq (org-odt-xml-type x) type)
 				     return ntype))))
        -uniq))
+
+
+(defun test (types xml)
+  (unless (consp types)
+    (setq types (list types)))
+  (->> xml
+       (org-odt-xml-map
+	(lambda (n)
+	  (when (and (memq (org-odt-xml-type n) types)
+		     ;; (string= (org-odt-xml-property n 'family) "paragraph")
+		     )
+	    (when (cl-some #'atom (org-odt-xml-contents n))
+	      n))))))
+
+(test 'style:style styles-tree)
 
 (defun org-odt-xml-contents-type (types xml)
   (unless (consp types)
@@ -250,7 +281,7 @@
 (defun org-odt-xml-glimpse (type styles-tree)
   (list
    :parent-types (org-odt-xml-container-type type styles-tree)
-   :properties-types (org-odt-xml-properties-type type styles-tree)
+   :properties-types (org-odt-xml-properties-type-new type styles-tree)
    :contents-types
    (org-odt-xml-contents-type type styles-tree)))
 
@@ -383,10 +414,105 @@
 	  -uniq
 	  length))))
 
-(test 'style:style
-      nil
-      (org-odt-xml-properties (org-odt-get-style-definition styles-tree "Text_20_body"))
-      styles-tree)
+(org-odt-define-struct-property-attributes 'style:style
+					   nil
+					   (org-odt-xml-properties (org-odt-get-style-definition styles-tree "Text_20_body"))
+					   styles-tree)
+
+
+(org-odt-xml-glimpse 'style:style styles-tree)
+
+(defun org-odt-xml-ok-to-abbreviate )
+
+(defun transform (xml)
+  (cond
+   ;; ((eq 'define (org-odt-xml-type xml))
+   ;;  (set  (intern (org-odt-xml-property xml 'name))
+   ;;        (transform (org-odt-xml-contents xml))))
+   ;; ((eq 'attribute (org-odt-xml-type xml))
+   ;;  (intern (format ":%s" (org-odt-xml-property xml 'name) ))
+   ;;  ;; (cond
+   ;;  ;;  ((member  data-types)
+   ;;  ;;   nil)
+   ;;  ;;  (t
+   ;;  ;;   xml))
+   ;;  ;; (intern (format "!%s" (org-odt-xml-property xml 'name)))
+   ;;  )
+   ((eq 'value (org-odt-xml-type xml))
+    nil
+    ;; (intern (format "!%s" (org-odt-xml-property xml 'name)))
+    )
+   
+   ((and (eq 'ref (org-odt-xml-type xml))
+	 (member (org-odt-xml-property xml 'name) data-types))
+    nil
+    ;; (intern (format "!%s" (org-odt-xml-property xml 'name)))
+    )
+   ((eq 'ref (org-odt-xml-type xml))
+    (cl-assert (null (org-odt-xml-contents xml)))
+    (intern (format ":!%s" (org-odt-xml-property xml 'name)))
+    ;; (intern (format "!%s" (org-odt-xml-property xml 'name)))
+    )
+   ;; ((eq 'element (org-odt-xml-type xml))
+   ;;  `(,(intern (format "%s" (org-odt-xml-property xml 'name)))
+   ;;          ,@(delq nil (transform (org-odt-xml-contents xml))))
+   ;;  ;; (intern (format "!%s" (org-odt-xml-property xml 'name)))
+   ;;  )
+   ;; ((eq 'optional (org-odt-xml-type xml))
+   ;;  (transform (org-odt-xml-contents xml)) )
+   ;; ((eq 'eval (org-odt-xml-type xml))
+   ;;  (eval (nth 1 xml)))
+   ;; ((eq 'value (org-odt-xml-type xml))
+   ;;  ;; (transform (org-odt-xml-contents xml))
+   ;;  nil)
+
+   ((eq 'data (org-odt-xml-type xml))
+    nil
+    ;; (transform (org-odt-xml-contents xml))
+    )
+   ((eq 'choice (org-odt-xml-type xml))
+    (delq nil (transform (org-odt-xml-contents xml)))
+    
+    ;; (transform (org-odt-xml-contents xml))
+    )
+   ((and (eq 'define (org-odt-xml-type xml))
+	 (eq 'data (org-odt-xml-type (car (org-odt-xml-contents xml)))))
+    nil
+    ;; (transform (org-odt-xml-contents xml))
+    )
+   ((eq 'group (org-odt-xml-type xml))
+    (transform (org-odt-xml-contents xml)))   
+   ((eq 'optional (org-odt-xml-type xml))
+    (transform (org-odt-xml-contents xml)))
+   ((eq 'zeroOrMore (org-odt-xml-type xml))
+    (transform (org-odt-xml-contents xml)))
+   ((eq 'oneOrMore (org-odt-xml-type xml))
+    (transform (org-odt-xml-contents xml)))
+   ((eq 'interleave (org-odt-xml-type xml))
+    (transform (org-odt-xml-contents xml)))
+   ((eq 'attribute (org-odt-xml-type xml))
+    (intern (format ":%s" (org-odt-xml-property xml 'name))))
+   ;; ((eq 'element (org-odt-xml-type xml))
+   ;;  (list (intern (format "%s" (org-odt-xml-property xml 'name)))
+   ;;        (transform (org-odt-xml-contents xml))))
+   ;; ((eq 'value (org-odt-xml-type xml))
+   ;;  `(value ,(car (org-odt-xml-contents xml))))
+   ((org-odt-xml-node-p xml)
+    `(
+      ,(nth 0 xml)
+      ,(nth 1 xml)
+      ,@(delq nil (transform (org-odt-xml-contents xml)))))
+   ((consp xml)
+    (mapcar #'transform xml))
+   (t xml)))
+
+(defun collect-data-types (xml)
+  (->> xml
+       (org-odt-xml-map
+	(lambda (n)
+	  (when (and (eq 'define (org-odt-xml-type n ))
+                     (eq 'data (org-odt-xml-type (car (org-odt-xml-contents n)))))
+	    (org-odt-xml-property n 'name))))))
 
 (provide 'ox-odt-xml.el)
 ;;; ox-odt-xml.el.el ends here

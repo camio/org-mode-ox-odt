@@ -8609,11 +8609,11 @@ channel."
 	(active
 	 (format "<text:span text:style-name=\"%s\">%s</text:span>"
 		 "OrgActiveTimestamp"
-		 (format "&lt;%s&gt;" (org-odt--format-timestamp timestamp))))
+		 (format "%s" (org-odt--format-timestamp timestamp))))
 	(inactive
 	 (format "<text:span text:style-name=\"%s\">%s</text:span>"
 		 "OrgInactiveTimestamp"
-		 (format "[%s]" (org-odt--format-timestamp timestamp))))
+		 (format "%s" (org-odt--format-timestamp timestamp))))
 	(active-range
 	 (format "<text:span text:style-name=\"%s\">%s</text:span>"
 		 "OrgActiveTimestamp"
