@@ -47,17 +47,23 @@
 	(insert "<office:document-content>")))
     (org-odt--xml-to-lisp (buffer-substring-no-properties (point-min) (point-max)))))
 
-(defvar org-odt-styles-file-as-xml
+(defvar org-odt-styles-file-as-lisp
   (org-odt-xml-parse
    (expand-file-name "OrgOdtStyles.xml" org-odt-styles-dir)
    'remove-xmlns-attributes))
 
-(defvar styles-tree org-odt-styles-file-as-xml)
+(defvar styles-tree org-odt-styles-file-as-lisp)
 
-(defvar org-odt-content-template-file-as-xml
+(defvar org-odt-content-template-file-as-lisp
   (org-odt-xml-parse
    (expand-file-name "OrgOdtContentTemplate.xml" org-odt-styles-dir)
    'remove-xmlns-attributes))
+
+(defvar org-odf1.2-os-schema-as-rng
+  (org-odt-xml-parse
+   (expand-file-name "odf1.2/OpenDocument-v1.2-os-schema.rng" org-odt-schema-dir)))
+
+(setq rng org-odf1.2-os-schema-as-rng)
 
 ;; (defvar contents-tree
 ;;   (org-odt-xml-parse "~/Downloads/gnulinuxmagazine/xml/content-full.xml"))
@@ -98,7 +104,7 @@
 			 (t (format "%S" an-item))))
 		      valuemapper))))))
 
-;; (org-odt-xml-properties-type 'style:graphic-properties org-odt-styles-file-as-xml)
+;; (org-odt-xml-properties-type 'style:graphic-properties org-odt-styles-file-as-lisp)
 
 ;; (org-odt-xml-contents-type 'style:graphic-properties styles-tree)
 
@@ -222,7 +228,6 @@
 		    -uniq
 		    (org-odt-xml-sort< 'identity))))))
 
-
 (defun org-odt-xml-properties-type-new (types xml)
   (unless (consp types)
     (setq types (list types)))
@@ -245,7 +250,6 @@
 				     when (eq (org-odt-xml-type x) type)
 				     return ntype))))
        -uniq))
-
 
 (defun test (types xml)
   (unless (consp types)
@@ -414,15 +418,14 @@
 	  -uniq
 	  length))))
 
-(org-odt-define-struct-property-attributes 'style:style
-					   nil
-					   (org-odt-xml-properties (org-odt-get-style-definition styles-tree "Text_20_body"))
-					   styles-tree)
+;; (org-odt-define-struct-property-attributes 'style:style
+;; 					   nil
+;; 					   (org-odt-xml-properties (org-odt-get-style-definition styles-tree "Text_20_body"))
+;; 					   styles-tree)
 
+;; (org-odt-xml-glimpse 'style:style styles-tree)
 
-(org-odt-xml-glimpse 'style:style styles-tree)
-
-(defun org-odt-xml-ok-to-abbreviate )
+;; (defun org-odt-xml-ok-to-abbreviate )
 
 (defun transform (xml)
   (cond
@@ -442,7 +445,7 @@
     nil
     ;; (intern (format "!%s" (org-odt-xml-property xml 'name)))
     )
-   
+
    ((and (eq 'ref (org-odt-xml-type xml))
 	 (member (org-odt-xml-property xml 'name) data-types))
     nil
@@ -472,7 +475,7 @@
     )
    ((eq 'choice (org-odt-xml-type xml))
     (delq nil (transform (org-odt-xml-contents xml)))
-    
+
     ;; (transform (org-odt-xml-contents xml))
     )
    ((and (eq 'define (org-odt-xml-type xml))
@@ -481,7 +484,7 @@
     ;; (transform (org-odt-xml-contents xml))
     )
    ((eq 'group (org-odt-xml-type xml))
-    (transform (org-odt-xml-contents xml)))   
+    (transform (org-odt-xml-contents xml)))
    ((eq 'optional (org-odt-xml-type xml))
     (transform (org-odt-xml-contents xml)))
    ((eq 'zeroOrMore (org-odt-xml-type xml))
@@ -513,6 +516,324 @@
 	  (when (and (eq 'define (org-odt-xml-type n ))
                      (eq 'data (org-odt-xml-type (car (org-odt-xml-contents n)))))
 	    (org-odt-xml-property n 'name))))))
+
+;; (setq data-types
+;;       (collect-data-types rng))
+
+;; ("CURIE" "ID" "IDREF" "IDREFS" "NCName" "SafeCURIE" "angle" "anyIRI"
+;;  "anyURI" "base64Binary" "cellAddress" "cellRangeAddressList"
+;;  "character" "clipShape" "color" "countryCode" "date" "dateTime"
+;;  "double" "duration" "extrusionOrigin" "integer" "language"
+;;  "languageCode" "length" "namespacedToken" "nonNegativeDecimal"
+;;  "nonNegativeInteger" "nonNegativeLength" "nonNegativePixelLength"
+;;  "pathData" "percent" "point3D" "points" "positiveInteger"
+;;  "positiveLength" "relativeLength" "scriptCode"
+;;  "signedZeroToHundredPercent" "string" "styleName" "textEncoding"
+;;  "time" "variableName" "vector3D" "zeroToHundredPercent"
+;;  "zeroToOneDecimal")
+
+;; (setq x (transform rng))
+
+;; (setq rng1 (transform rng))
+
+(defun transform1 (xml)
+  (cond
+   ((org-odt-xml-node-p xml)
+    `(
+      ,(nth 0 xml)
+      ,(nth 1 xml)
+      ,@(delq nil (-flatten (org-odt-xml-contents xml)))))
+   ;; ((consp xml)
+   ;;  (mapcar #'transform xml))
+   (t xml)))
+
+;; (transform rng1)
+
+(defun ox-odt-xml-dom-search (dom predicate)
+  "Return elements in DOM where PREDICATE is non-nil.
+PREDICATE is called with the node as its only parameter."
+  (let ((matches (cl-loop for child in (dom-children dom)
+			  for matches = (and (not (stringp child))
+					     (ox-odt-xml-dom-search child predicate))
+			  when matches
+			  append matches)))
+    (if (funcall predicate dom)
+	(cons (funcall predicate dom) matches)
+      matches)))
+
+(defun ox-odt-xml-data-types (rng)
+  (->> (ox-odt-xml-dom-search rng
+		   (lambda (n)
+		     (when (and (eq 'define (dom-tag n))
+				(eq 'data (dom-tag (car (dom-children n)))))
+		       (list
+			(dom-attr n 'name)
+			(apply #'append
+			       (list :type (dom-attr (car (dom-children n)) 'type))
+			       (ox-odt-xml-dom-search (car (dom-children n))
+					   (lambda (n)
+					     (when (eq (dom-tag n) 'param)
+					       (list (intern (format ":%s" (dom-attr n 'name)))
+						     (car (dom-children n)))
+					       ;; n
+					       )))))
+		       ;; (dom-attr n 'name)
+		       ;; (cons
+		       ;;  )
+		       )))
+       ;; (-group-by #'car)
+       ;; (--map (cons (car it)
+       ;; 		  (->> (cdr it)
+       ;; 		       (-map #'cdr)
+       ;; 		       (-flatten-n 1)
+       ;; 		       -uniq
+       ;; 		       )
+       ;; 		  ))
+       ))
+
+(defun ox-odt-xml-attribute-types (rng)
+  (->> (ox-odt-xml-dom-search rng
+		   (lambda (n)
+		     (when (and (eq 'define (dom-tag n))
+				;; (eq 'data (dom-tag (car (dom-children n))))
+                                )
+                       n
+		       
+		       ;; (dom-attr n 'name)
+		       ;; (cons
+		       ;;  )
+		       )))
+       ;; (-group-by #'car)
+       ;; (--map (cons (car it)
+       ;; 		  (->> (cdr it)
+       ;; 		       (-map #'cdr)
+       ;; 		       (-flatten-n 1)
+       ;; 		       -uniq
+       ;; 		       )
+       ;; 		  ))
+       ))
+
+(ox-odt-xml-data-types rng)
+
+(ox-odt-xml-attribute-types rng)
+
+
+(defun odt-xml-get-element-name (name)
+  (ox-odt-xml-dom-search rng (lambda (n)
+			       (when (and (eq 'element (dom-tag n))
+					  (string= name (dom-attr n 'name)))
+				 n))))
+
+(defun odt-xml-deref-ref-name (name)
+  (let ((result (car (ox-odt-xml-dom-search rng (lambda (n)
+						  (when (and (eq 'define (dom-tag n))
+							     (string= name (dom-attr n 'name)))
+						    n))))))
+    result))
+
+(defun odt-xml-ref-data-p (n)
+  (when (and (eq 'ref (dom-tag n))
+	     (not (eq (dom-tag (car (dom-children n))) 'data)))
+    n))
+
+(defun odt-xml-do-referenced-ref-names (n)
+  (ox-odt-xml-dom-search n (lambda (n)
+			     (when (eq 'ref (dom-tag n))
+			       ;; (message "parents of %s" (dom-attr n 'name))
+			       (let ((parents (odt-xml-dom-parents n)))
+				 ;; (message "parents %S" parents)
+				 (cond
+				  ((cl-some (lambda (n)
+					      (eq (dom-tag n) 'attribute))
+					    parents)
+				   nil)
+				  (t
+				   (dom-attr n 'name))))
+			       ;; (pause "test")
+			       ))))
+
+(defun odt-xml-dom-parents (n)
+  (let* ((this n)
+	 (parent nil)
+	 (parents '()))
+    (while (setq parent (dom-parent rng this))
+      (push parent parents)
+      (setq this parent))
+    parents))
+
+(defun odt-xml-referenced-ref-names (ref-name)
+  (delete-dups (odt-xml-do-referenced-ref-names (odt-xml-deref-ref-name ref-name))))
+
+(defun odt-xml-ref-name->ref-names (ref-name)
+  (let* ((done '())
+	 (pending (if (consp ref-name)
+		      ref-name
+		    (list ref-name)))
+	 (this nil)
+	 (final '()))
+    (while (setq this (pop pending))
+      (push this done)
+      (push (odt-xml-deref-ref-name this) final)
+      (setq pending (cl-union pending
+			      (cl-set-difference
+			       (odt-xml-referenced-ref-names this) done)))
+      ;; (message "\n\n\ndone:\n%S" done)
+      ;; (message "\n\n\npending:\n%S" pending)
+      )
+    final))
+
+(odt-xml-deref-ref-name "style-graphic-properties-content-strict")
+
+(odt-xml-ref-name->ref-names "style-graphic-properties-content-strict")
+
+(odt-xml-referenced-ref-names ref-name)
+
+(setq target (odt-xml-ref-name->ref-names (odt-xml-do-referenced-ref-names (odt-xml-get-element-name "style:graphic-properties")))) 
+
+(defun odt-xml-rng->rnc (xml)
+  (cond
+   ((stringp xml)
+    xml)
+   ((eq 'value (org-odt-xml-type xml))
+    (format "\"%s\""
+	    (prog1 (car (dom-children xml))
+	      (cl-assert (= 1 (length (dom-children xml)))
+			 t
+			 "type: %s" (org-odt-xml-type xml))))
+    ;; (intern (format "!%s" (org-odt-xml-property xml 'name)))
+    )
+   
+   ((eq 'choice (org-odt-xml-type xml))
+    (mapconcat #'odt-xml-rng->rnc
+	       (dom-children xml)
+	       "\n| ")
+    ;; (intern (format "!%s" (org-odt-xml-property xml 'name)))
+    )
+   ((eq 'attribute (org-odt-xml-type xml))
+    (format "attribute %s {\n %s \n}"
+	    (dom-attr xml 'name)
+	    (prog1 (odt-xml-rng->rnc (car (dom-children xml)))
+	      (cl-assert (= 1 (length (dom-children xml)))
+			 t
+			 "type: %s" (org-odt-xml-type xml))))
+    ;; (intern (format "!%s" (org-odt-xml-property xml 'name)))
+    )
+   ((eq 'optional (org-odt-xml-type xml))
+    (format "%s?"
+	    (prog1 (odt-xml-rng->rnc (dom-children xml))
+	      (cl-assert (= 1 (length (dom-children xml)))
+			 t
+			 "type: %s" (org-odt-xml-type xml))))
+    ;; (intern (format "!%s" (org-odt-xml-property xml 'name)))
+    )
+   ((eq 'oneOrMore (org-odt-xml-type xml))
+    (format "\n(\n%s\n)+\n"
+	    (prog1 (odt-xml-rng->rnc (dom-children xml))
+	      (cl-assert (= 1 (length (dom-children xml)))
+			 t
+			 "type: %s" (org-odt-xml-type xml))))
+    ;; (intern (format "!%s" (org-odt-xml-property xml 'name)))
+    )
+   ((eq 'list (org-odt-xml-type xml))
+    (format "list { %s }"
+	    (mapconcat #'odt-xml-rng->rnc
+		       (dom-children xml)
+		       "\n, ")
+	    ;; (prog1 (odt-xml-rng->rnc (dom-children xml))
+	    ;;   (cl-assert (= 1 (length (dom-children xml)))
+	    ;; 		 t
+	    ;; 		 "type: %s" (org-odt-xml-type xml)))
+	    )
+    ;; (intern (format "!%s" (org-odt-xml-property xml 'name)))
+    )
+   ((eq 'define (org-odt-xml-type xml))
+    (format "%s =\n%s"
+	    (dom-attr xml 'name)
+	    (mapconcat #'odt-xml-rng->rnc
+	       (dom-children xml)
+	       ",\n"))
+    ;; (intern (format "!%s" (org-odt-xml-property xml 'name)))
+    )
+   ((eq 'ref (org-odt-xml-type xml))
+    (dom-attr xml 'name)
+    ;; (intern (format "!%s" (org-odt-xml-property xml 'name)))
+    )
+   ((eq 'interleave (org-odt-xml-type xml))
+    (mapconcat #'odt-xml-rng->rnc
+	       (dom-children xml)
+	       "\n& ")
+    ;; (intern (format "!%s" (org-odt-xml-property xml 'name)))
+    )
+   ((eq 'param (org-odt-xml-type xml))
+    (format "%s = %s"
+	    (dom-attr xml 'name)
+	    (odt-xml-rng->rnc (dom-children xml)))
+    ;; (intern (format "!%s" (org-odt-xml-property xml 'name)))
+    )
+   ((eq 'data (org-odt-xml-type xml))
+    (format "xsd:%s = %s"
+	    (dom-attr xml 'type)
+	    (odt-xml-rng->rnc (dom-children xml)))
+    ;; (intern (format "!%s" (org-odt-xml-property xml 'name)))
+    )
+   ((eq 'empty (org-odt-xml-type xml))
+    (format "%s"
+	    (org-odt-xml-type xml))
+    ;; (intern (format "!%s" (org-odt-xml-property xml 'name)))
+    )
+   ((eq 'group (org-odt-xml-type xml))
+    (format "(%s)"
+	    (mapconcat #'odt-xml-rng->rnc
+		       (dom-children xml)
+		       "\n, ")
+	    ;; (prog1 (odt-xml-rng->rnc (dom-children xml))
+	    ;;   (cl-assert (= 1 (length (dom-children xml)))
+	    ;; 		 t
+	    ;; 		 "type: %s" (org-odt-xml-type xml)))
+	    )
+    ;; (intern (format "!%s" (org-odt-xml-property xml 'name)))
+    )
+   ((eq 'element (org-odt-xml-type xml))
+    (format "element %s {\n%s\n}"
+	    (dom-attr xml 'name)
+	    (mapconcat #'odt-xml-rng->rnc
+		       (dom-children xml)
+		       ",\n "))
+    ;; (intern (format "!%s" (org-odt-xml-property xml 'name)))
+    )
+   ((eq 'zeroOrMore (org-odt-xml-type xml))
+    (format "%s*"
+	    (prog1 (odt-xml-rng->rnc (dom-children xml))
+	      (cl-assert (= 1 (length (dom-children xml)))
+			 t
+			 "type: %s" (org-odt-xml-type xml))))
+    ;; (intern (format "!%s" (org-odt-xml-property xml 'name)))
+    )
+   ((eq 'comment (org-odt-xml-type xml))
+    "\n"
+    ;; (mapconcat #'odt-xml-rng->rnc
+    ;; 	       (dom-children xml)
+    ;; 	       "\n| ")
+    ;; (intern (format "!%s" (org-odt-xml-property xml 'name)))
+    )   
+   ((org-odt-xml-type xml)
+    (error "You aren't handling %S" (org-odt-xml-type xml)))
+   (t
+    (mapconcat #'odt-xml-rng->rnc
+	       xml
+	       ""))))
+
+(with-current-buffer (get-buffer-create "*rnc*")
+  (erase-buffer)
+  (cl-loop for n in
+	   target
+	   ;; (dom-children rng)
+	   
+	   do (insert "\n\n" (odt-xml-rng->rnc n)))
+  
+  (pop-to-buffer (current-buffer))
+  (rnc-mode)
+  (indent-region (point-min) (point-max)))
 
 (provide 'ox-odt-xml.el)
 ;;; ox-odt-xml.el.el ends here
