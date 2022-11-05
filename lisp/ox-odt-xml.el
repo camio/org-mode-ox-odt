@@ -686,8 +686,6 @@ PREDICATE is called with the node as its only parameter."
 
 (odt-xml-ref-name->ref-names "style-graphic-properties-content-strict")
 
-(odt-xml-referenced-ref-names ref-name)
-
 (setq target (odt-xml-ref-name->ref-names (odt-xml-do-referenced-ref-names (odt-xml-get-element-name "style:graphic-properties")))) 
 
 (defun odt-xml-rng->rnc (xml)
